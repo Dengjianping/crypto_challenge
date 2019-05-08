@@ -1,0 +1,7 @@
+[package]
+name = "crypto_challenge"
+version = "0.1.0"
+authors = ["jamie"]
+edition = "2018"
+
+[dependencies]
