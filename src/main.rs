@@ -7,7 +7,7 @@ use std::io::{ self, Read };
 fn main() {
     // challenge 1
     let challenge_1 = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
-    println!("challenge 1: {}", hex2base64(challenge_1));
+    println!("challenge 1: {}", encode_base64(challenge_1));
     
     // challenge 2
     let challenge_2_message = "1c0111001f010100061a024b53535009181c";
@@ -44,7 +44,30 @@ fn get_txt_content<T: AsRef<Path>>(path: T) -> String {
     content
 }
 
-fn decrypt_base64<T: AsRef<str>>(base64_str: T) -> String {
+fn hex2u8<T: AsRef<str>>(hex: T) -> Vec<u8> {
+    let step = 2usize;
+    hex.as_ref().chars().step_by(step).enumerate().map(|(index, _)| {
+        let hex_slice = &hex.as_ref()[step * index..step * index + step];
+        u8::from_str_radix(hex_slice, 16).unwrap()
+    }).collect::<Vec<u8>>()
+}
+
+fn hex2binary<T: AsRef<str>>(hex: T) -> String {
+    let step = 2usize;
+    hex.as_ref().chars().step_by(step).enumerate().map(|(index, _)| {
+        let hex_slice = &hex.as_ref()[step * index..step * index + step];
+        format!("{:08b}", u8::from_str_radix(hex_slice, 16).unwrap())
+    }).collect()
+}
+
+#[allow(dead_code)]
+fn str2hex<T: AsRef<[u8]>>(plain_str: T) -> String {
+    plain_str.as_ref().iter().map(|c| {
+        format!("{:02x}", c)
+    }).collect::<String>()
+}
+
+fn decode_base64<T: AsRef<str>>(base64_str: T) -> String {
     // remove all symbol '='
     let trimed_str = base64_str.as_ref().trim_end_matches('=');
     
@@ -60,32 +83,26 @@ fn decrypt_base64<T: AsRef<str>>(base64_str: T) -> String {
     
     let result: String = splited.chars().step_by(step).enumerate().map(|(index, _)| {
         let slice = &splited[step * index..step * index + step];
-        let hex2u8 = u8::from_str_radix(slice, 2).unwrap();
-        char::from(hex2u8)
+        char::from(u8::from_str_radix(slice, 2).unwrap())
     }).collect();
     result
 }
 
 // challenge 1
-fn hex2base64<T: AsRef<str>>(hex_str: T) -> String {
+fn encode_base64<T: AsRef<str>>(hex_str: T) -> String {
     // determine how many '=' will be added
     let equal_count = hex_str.as_ref().len() % 3;
     
     // generate the string represented as binary
-    let mut step = 2usize;
-    let mut bin_str: String = hex_str.as_ref().chars().step_by(step).enumerate().map(|(index, _)| {
-        let slice = &hex_str.as_ref()[step * index..step * index + step];
-        let hex2u8 = u8::from_str_radix(slice, 16).unwrap();
-        format!("{:08b}", hex2u8)
-    }).collect();
+    let mut bin_str = hex2binary(hex_str);
     
-    step = 6usize;
+    let step = 6usize;
     // padding the extra '0' to ensure the length of string is multiple of 6
     if bin_str.len() % step != 0 {
         let padding_str: String = std::iter::repeat('0').take(step - bin_str.len() % step).collect();
         bin_str += &padding_str;
     }
-
+    
     let result: String = bin_str.chars().step_by(step).enumerate().map(|(index, _)| {
         let slice = &bin_str[step * index..step * index + step];
         let hex2u8 = u8::from_str_radix(slice, 2).unwrap();
@@ -101,22 +118,16 @@ fn hex2base64<T: AsRef<str>>(hex_str: T) -> String {
 
 // challenge 2
 fn fix_xor<T: AsRef<str>>(message: T, key: T) -> String {
-    // remove unwrap, judge length of input string, error handling
-    let (msg_tr, key_str) = (message.as_ref(), key.as_ref());
+    let u8_msg = hex2u8(message);
+    let u8_key = hex2u8(key);
     
-    let step = 2usize;
-    let result: String = msg_tr.chars().step_by(step).enumerate().map(|(index, _)| {
-        let message_slice = &msg_tr[step * index..step * index + step];
-        let key_slice = &key_str[step * index..step * index + step];
-        let msg_u8 = u8::from_str_radix(message_slice, 16).unwrap();
-        let key_u8 = u8::from_str_radix(key_slice, 16).unwrap();
-        format!("{:02x}", msg_u8 ^ key_u8)
-    }).collect();
-    result
+    u8_msg.iter().zip(u8_key.iter()).map(|(m, k)| {
+        format!("{:02x}", m ^ k)
+    }).collect()
 }
 
 // challenge 3
-fn single_byte_xor_cipher<T: AsRef<str>>(hex: T) -> (String, usize, f32) {
+fn single_byte_xor_cipher<T: AsRef<str>>(hex_str: T) -> (String, usize, f32) {
     // these data from here: http://www.data-compression.com/english.html#first
     // clippy likes this format 0.012_424_8
     #[allow(clippy::unreadable_literal)]
@@ -129,16 +140,12 @@ fn single_byte_xor_cipher<T: AsRef<str>>(hex: T) -> (String, usize, f32) {
         ('z', 0.0007836), (' ', 0.1918182)
     ].iter().cloned().collect();
     
-    let hex_ref = hex.as_ref();
-    let step = 2usize;
+    let hex_to_u8_vec = hex2u8(hex_str);
     
     let all_decoded: Vec<_> = (0..=255u8).map(|c| {
-        let decoded: String = hex_ref.chars().step_by(step).enumerate().map(|(index, _)| {
-            let hex_slice = &hex_ref[step* index..step*index + step];
-            let hex2u8 = u8::from_str_radix(hex_slice, 16).unwrap();
-            char::from(hex2u8 ^ c)
-        }).collect();
-        decoded
+        hex_to_u8_vec.iter().map(|u| {
+            char::from(u ^ c)
+        }).collect::<String>()
     }).collect();
     
     let all_score: Vec<f32> = all_decoded.iter().map(|decoded| {
@@ -152,10 +159,8 @@ fn single_byte_xor_cipher<T: AsRef<str>>(hex: T) -> (String, usize, f32) {
     let max_element = all_score.iter().enumerate().max_by(|x, y| x.1.partial_cmp(&y.1).unwrap());
 
     let (max_index, score) = max_element.unwrap();
-    let result: String = hex_ref.chars().step_by(step).enumerate().map(|(index, _)| {
-        let hex_slice = &hex_ref[step* index..step*index + step];
-        let xor_u8 = max_index as u8 ^ u8::from_str_radix(hex_slice, 16).unwrap();
-        char::from(xor_u8)
+    let result: String = hex_to_u8_vec.iter().map(|c| {
+        char::from(max_index as u8 ^ c)
     }).collect();
     (result, max_index, *score)
 }
@@ -173,12 +178,12 @@ fn detect_single_character_xor<T: AsRef<Path>>(path: T) -> (String, usize, f32) 
 }
 
 // challenge 5
-fn repeating_key_xor<T: AsRef<str>>(text: T, key: T, hexed: bool) -> String {
+fn repeating_key_xor<T: AsRef<[u8]>>(text: T, key: T, hexed: bool) -> String {
     // create a cycled iterator
-    let mut key_cycle_iter = key.as_ref().chars().cycle();
+    let mut key_cycle_iter = key.as_ref().iter().cycle();
     
-    let result: String = text.as_ref().chars().map(|c| {
-        let xor_u8 = c as u8 ^ *key_cycle_iter.next().as_ref().unwrap() as u8;
+    let result: String = text.as_ref().iter().map(|c| {
+        let xor_u8 = *c as u8 ^ *key_cycle_iter.next().unwrap() as u8;
         if hexed {
             format!("{:02x}", xor_u8)
         } else {
@@ -188,19 +193,26 @@ fn repeating_key_xor<T: AsRef<str>>(text: T, key: T, hexed: bool) -> String {
     result
 }
 
+fn calculate_hamming_distance<T: AsRef<[u8]>>(group: &(T, T)) -> u32 {
+    group.0.as_ref().iter().zip(group.1.as_ref().iter()).map(|(g0, g1)| {
+        let xor_u8 = g0 ^ g1;
+        xor_u8.count_ones()
+    }).sum()
+}
+
 // challenge 6
 fn break_repeating_key_xor<T: AsRef<Path>>(path: T) -> (String, String) {
     let txt_content = get_txt_content(path.as_ref());
-    let decrypted_str: String = txt_content.lines().map(decrypt_base64).collect();
+    let decoded_str: String = txt_content.lines().map(decode_base64).collect();
     
     // get the length of key
     let mut normalized_hamming_distances: Vec<_> = (2..40).map(|key_size| {
         // divide the string by key_size
-        let key_size_blocks: Vec<_> = decrypted_str.as_str().chars().step_by(key_size).enumerate().map(|(index, _)| {
-            &decrypted_str.as_str()[index * key_size..index * key_size + key_size]
+        let key_size_blocks: Vec<_> = decoded_str.as_str().chars().step_by(key_size).enumerate().map(|(index, _)| {
+            &decoded_str.as_str()[index * key_size..index * key_size + key_size]
         }).take(4).collect(); // take 4 key_size blocks
         
-        // generate all groups
+        // generate all groups Vec<'a str>
         let mut iter = key_size_blocks.iter();
         let mut groups: Vec<(&str, &str)> = Vec::new();
         while let Some(i) = iter.next() {
@@ -209,15 +221,9 @@ fn break_repeating_key_xor<T: AsRef<Path>>(path: T) -> (String, String) {
                 groups.push((i, j));
             }
         }
-        
+
         // caculate hamming distance
-        let hamming_distance: u32 = groups.iter().map(|tuple| {
-            let ones: u32 = tuple.0.chars().zip(tuple.1.chars()).map(|(t0, t1)| {
-                let xor_u8 = t0 as u8 ^ t1 as u8;
-                xor_u8.count_ones()
-            }).sum();
-            ones
-        }).sum();
+        let hamming_distance: u32 = groups.iter().map(calculate_hamming_distance).sum();
         // (avg_hamming_distance, key_size)
         (hamming_distance as f32 / key_size as f32, key_size)
     }).collect();
@@ -229,7 +235,7 @@ fn break_repeating_key_xor<T: AsRef<Path>>(path: T) -> (String, String) {
     let all_decrypted: Vec<_> = normalized_hamming_distances.iter().take(3).map(|s| {
         // find all keys
         let key: String = (0..s.1).map(|i| {
-            let tranposed_str: String = decrypted_str.as_str().chars().enumerate().filter_map(|(index, val)| {
+            let tranposed_str: String = decoded_str.as_str().chars().enumerate().filter_map(|(index, val)| {
                 // make a block that is the first byte of every block, and a block that is the second byte of every block, and so on.
                 if index % s.1 == i {
                     Some(format!("{:02x}", val as u8)) 
@@ -247,7 +253,7 @@ fn break_repeating_key_xor<T: AsRef<Path>>(path: T) -> (String, String) {
     
     // find the max score by key
     let max_score = all_decrypted.iter().max_by(|x, y| x.2.partial_cmp(&y.2).unwrap()).unwrap();
-    let result = repeating_key_xor(&decrypted_str, &max_score.0, false);
+    let result = repeating_key_xor(&decoded_str, &max_score.0, false);
     // (key, result)
     (max_score.0.clone(), result)
 }
