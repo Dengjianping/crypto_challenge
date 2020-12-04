@@ -17,4 +17,3 @@ jobs:
           host: ${{ secrets.HOST }}
           key: ${{ secrets.KEY }}
           script: whoami
-          script: pwd
