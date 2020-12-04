@@ -17,4 +17,6 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
-          script: whoami
+          script: |
+            cd /root/jenkins && git clone https://github.com/Dengjianping/crypto_challenge.git
+            cd crypto_challenge && pwd
